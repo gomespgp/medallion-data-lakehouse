@@ -7,15 +7,31 @@ This document details the architecture, design choices, infrastructure component
 ## System Overview
 
 The platform implements an ELT (Extract, Load, Transform) pattern to ingest transactional operational data, store it in open file formats on S3-compatible object storage, transform it into dimensional models, and serve it to analytics and visualization tools.
+```mermaid
+flowchart LR
+    subgraph Source [Operational Layer]
+        PG[("PostgreSQL\n(ecommerce DB)")]
+    end
 
-+------------------------+      +------------------------+      +------------------------+
-|  Operational Database  | ---> |   S3 Object Storage    | ---> | Analytical Engine & BI |
-|  (PostgreSQL OLTP)     |      |   (MinIO Data Lake)    |      |  (DuckDB + Superset)   |
-+------------------------+      +------------------------+      +------------------------+
-            |                               |                               ^
-            |                               |                               |
-            +--------- (Airflow) -----------+------------- (dbt) ------------+
+    subgraph Storage [MinIO Object Storage]
+        Bronze[("s3://dev-lakehouse-bronze")]
+        Silver[("s3://dev-lakehouse-silver")]
+        Gold[("s3://dev-lakehouse-gold")]
+    end
 
+    subgraph Serving [Analytics Layer]
+        DuckDB[("DuckDB Query Engine")]
+        Superset["Apache Superset\n(Dashboards & SQL Lab)"]
+    end
+
+    PG -->|"1. Ingest Raw Parquet"| Airflow["Apache Airflow"]
+    Airflow -->|"2. Write Parquet"| Bronze
+    Bronze -->|"3. Transform SQL"| dbt["dbt Engine"]
+    dbt -->|"4. Staging Models"| Silver
+    dbt -->|"5. Star Schemas"| Gold
+    Gold -->|"6. Direct Query"| DuckDB
+    DuckDB -->|"7. Visualize"| Superset
+```
 ---
 
 ## Tech Stack & Components
@@ -65,28 +81,33 @@ Partition folders follow standard Hive key-value formatting (`year=YYYY/month=MM
 
 ## Medallion Lakehouse Structure
 
-s3://dev-lakehouse-bronze/                # Raw, immutable Parquet files straight from source databases
-`-- postgres_ecommerce_db/
-    |-- users/
-    |   `-- year=2026/month=08/day=01/users.parquet
-    `-- orders/
-        `-- year=2026/month=08/day=01/orders.parquet
+```mermaid
+graph TD
+    subgraph Bronze ["🥉 BRONZE LAYER (s3://dev-lakehouse-bronze)"]
+        direction TB
+        B1["postgres_ecommerce_db/users/year=YYYY/month=MM/day=DD/users.parquet"]
+        B2["postgres_ecommerce_db/orders/year=YYYY/month=MM/day=DD/orders.parquet"]
+    end
 
-s3://dev-lakehouse-silver/                # Cleaned, typed, and deduplicated staging models
-`-- postgres_ecommerce_db/
-    |-- stg_users/
-    `-- stg_orders/
+    subgraph Silver ["🥈 SILVER LAYER (s3://dev-lakehouse-silver)"]
+        direction TB
+        S1["postgres_ecommerce_db/stg_users.parquet"]
+        S2["postgres_ecommerce_db/stg_orders.parquet"]
+    end
 
-s3://dev-lakehouse-gold/                  # Production-ready Star Schemas (Fact & Dimension tables)
-|-- dim_customers/
-`-- fact_sales/
+    subgraph Gold ["🥇 GOLD LAYER (s3://dev-lakehouse-gold)"]
+        direction TB
+        G1["dim_customers.parquet"]
+        G2["fact_sales.parquet"]
+    end
 
-s3://dev-airflow-logs/                    # System logs streamed directly from Airflow containers
-`-- dag_id=ecommerce_ingestion/
-    `-- run_id=scheduled__2026-08-01T00:00:00+00:00/
-        `-- task_id=ingest_users_to_bronze/
-            `-- attempt=1.log
+    subgraph Logs ["📋 OPERATIONAL LOGS (s3://dev-airflow-logs)"]
+        L1["dag_id=ecommerce_ingestion/run_id=.../task_id=.../attempt=1.log"]
+    end
 
+    Bronze -->|"dbt Clean & Deduplicate"| Silver
+    Silver -->|"dbt Model & Aggregate"| Gold
+```
 ---
 
 ## Orchestration & Modular DAG Architecture

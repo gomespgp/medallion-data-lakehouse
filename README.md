@@ -72,6 +72,7 @@ airflow tasks test ecommerce_ingestion_dag ingest_users_to_bronze 2026-08-01
 
 ## 📂 Repository Structure
 
+```text
 local-data-lakehouse/
 |-- .docker/
 |   |-- config/
@@ -85,3 +86,4 @@ local-data-lakehouse/
 |-- dbt/                              # dbt transformation models and DuckDB configs
 |-- ARCHITECTURE.md                   # Detailed technical design & system flow
 `-- README.md
+```
