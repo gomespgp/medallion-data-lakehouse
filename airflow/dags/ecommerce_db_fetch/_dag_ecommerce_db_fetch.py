@@ -49,25 +49,13 @@ with DAG(
     tags=['ingestion', 'bronze', 'postgres', 'minio'],
 ) as dag:
 
-    ingestion_tasks = {}
-    task_id_template = "ingest_{table_name}_to_bronze"
-
     # Dynamically create ingestion tasks from config.yaml table list
     for table_config in ECOMMERCE_CONFIG.get("tables", []):
         table_name = table_config.get("name")
-        task_id = task_id_template.format(table_name=table_name)
+        task_id = f"ingest_{table_name}_to_bronze"
         task = PythonOperator(
-            task_id=task_id,
+            task_id=task_id,        
             python_callable=extract_table_to_minio_parquet,
             op_kwargs={'table_name': table_name},
         )
-        ingestion_tasks[task_id] = task
-
-        # Set up dependencies if specified in the config
-        if table_config.get("depends_on"):
-            for upstream_table in table_config["depends_on"]:
-                task.set_upstream(
-                    ingestion_tasks.get(task_id_template.format(table_name=upstream_table))
-                )
-        
  

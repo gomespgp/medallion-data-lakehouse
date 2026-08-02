@@ -9,5 +9,3 @@ ecommerce:
   tables:
     - name: users
     - name: orders
-      depends_on:
-        - users
