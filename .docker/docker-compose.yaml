@@ -27,7 +27,6 @@ x-airflow-common: &airflow-common
   volumes:
     - ../airflow/dags:/opt/airflow/dags
     - ../airflow/plugins:/opt/airflow/plugins
-    - ../airflow/config:/opt/airflow/config
     - ../dbt:/opt/airflow/dbt
     # Mount requirements file from .docker/config/
     - ./config/requirements.txt:/opt/airflow/requirements.txt
