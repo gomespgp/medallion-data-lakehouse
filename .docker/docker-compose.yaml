@@ -1,0 +1,199 @@
+
+name: local-data-lakehouse
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.10.0-python3.10
+  environment:
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@airflow_db:5432/airflow
+    - AIRFLOW__CORE__FERNET_KEY=46ExudDx6L-uTWLxeWhhM0WqC4knQq-45-SVdwJG1Ws=
+    - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    - AIRFLOW__CORE__LOGGING_LEVEL=INFO
+    - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW__WEBSERVER__SECRET_KEY}
+    # --- Enable Remote Logging to MinIO (S3) dedicated 'dev-airflow-logs' bucket ---
+    - AIRFLOW__LOGGING__REMOTE_LOGGING=True
+    - AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER=s3://dev-airflow-logs
+    - AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID=minio_s3_logs
+    # Register MinIO Connection for S3 Remote Logging
+    - AIRFLOW_CONN_MINIO_S3_LOGS=aws://?endpoint_url=http%3A%2F%2Fminio%3A9000
+    # AWS / MinIO S3 Credentials for Airflow Tasks & DuckDB
+    - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+    - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+    - AWS_DEFAULT_REGION=us-east-1
+    # Tells pip to install everything listed in our mounted requirements file
+    - _PIP_ADDITIONAL_REQUIREMENTS=-r /opt/airflow/requirements.txt
+  env_file:
+    - .env
+  volumes:
+    - ../airflow/dags:/opt/airflow/dags
+    - ../airflow/plugins:/opt/airflow/plugins
+    - ../airflow/config:/opt/airflow/config
+    - ../dbt:/opt/airflow/dbt
+    # Mount requirements file from .docker/config/
+    - ./config/requirements.txt:/opt/airflow/requirements.txt
+  depends_on:
+    airflow_db:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+
+services:
+  # ==========================================
+  # 1. Operational Source Database (Postgres)
+  # ==========================================
+  postgres_source:
+    image: postgres:16-alpine
+    container_name: postgres_source
+    restart: always
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./scripts/init_postgres.sql:/docker-entrypoint-initdb.d/init_postgres.sql
+      - postgres_source_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # 2. Local Object Storage Data Lake (MinIO)
+  # ==========================================
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    container_name: minio_lake
+    restart: always
+    command: server /data --console-address ":9001"
+    env_file:
+      - .env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # MinIO Bucket Auto-Creation Task
+  minio_create_buckets:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+    container_name: minio_create_buckets
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc mb --ignore-existing myminio/dev-lakehouse-bronze;
+      /usr/bin/mc mb --ignore-existing myminio/dev-lakehouse-silver;
+      /usr/bin/mc mb --ignore-existing myminio/dev-lakehouse-gold;
+      /usr/bin/mc mb --ignore-existing myminio/dev-airflow-logs;
+      exit 0;
+      "
+    volumes:
+      - ./config:/config
+
+  # ==========================================
+  # 3. Apache Airflow (Metadata DB & Services)
+  # ==========================================
+  airflow_db:
+    image: postgres:16-alpine
+    container_name: airflow_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db init
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow_webserver
+    restart: always
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow_scheduler
+    restart: always
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ==========================================
+  # 4. Apache Superset (BI Layer)
+  # ==========================================
+  superset:
+    image: apache/superset:6.0.0
+    container_name: apache_superset
+    restart: always
+    env_file:
+      - .env
+    environment:
+      SUPERSET_SECRET_KEY: "your_supersette_secret_key_here_change_in_prod"
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset_data:/app/superset_home
+      - ../dbt:/app/dbt
+    command: >
+      /bin/sh -c "
+      superset db upgrade &&
+      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@superset.com --password admin || true &&
+      superset init &&
+      superset run -p 8088 -h 0.0.0.0 --with-threads --reload --debugger
+      "
+
+# ==========================================
+# Persistent Volumes Definition
+# ==========================================
+volumes:
+  postgres_source_data:
+  minio_data:
+  airflow_db_data:
+  superset_data:

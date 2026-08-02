@@ -1,0 +1,13 @@
+airflow:
+  id: ecommerce_db_fetch
+  schedule: "0 2 * * MON-FRI"  # Run every weekday at 2 AM
+  owners:
+    technical_owners:
+      - gomespgp
+
+ecommerce:
+  tables:
+    - name: users
+    - name: orders
+      depends_on:
+        - users
