@@ -1,0 +1,14 @@
+airflow:
+  id: "ecommerce_db_dbt"
+  owners:
+    technical_owners:
+      - "gomespgp"
+  dependencies:
+    - dag_id: "ecommerce_db_fetch"
+      task_id: "ingest_users_to_bronze"
+    - dag_id: "ecommerce_db_fetch"
+      task_id: "ingest_orders_to_bronze"
+
+dbt:
+  project_dir: "/opt/airflow/dbt"
+  profiles_dir: "/opt/airflow/dbt"

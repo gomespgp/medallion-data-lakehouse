@@ -2,4 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
+# env
 .venv/
+# dbt execution artifacts & logs
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+# User-specific dbt tracking/telemetry config
+dbt/.user.yml

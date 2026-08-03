@@ -1,5 +1,3 @@
-from asyncio import tasks
-
 import yaml
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -7,6 +5,7 @@ from datetime import datetime, timedelta
 from ecommerce_db_fetch.functions import extract_table_to_minio_parquet
 
 from airflow import DAG
+from airflow.datasets import Dataset
 from airflow.operators.python import PythonOperator
 
 # ---------------------------------------------------------------------------
@@ -53,9 +52,10 @@ with DAG(
     for table_config in ECOMMERCE_CONFIG.get("tables", []):
         table_name = table_config.get("name")
         task_id = f"ingest_{table_name}_to_bronze"
-        task = PythonOperator(
+        PythonOperator(
             task_id=task_id,        
             python_callable=extract_table_to_minio_parquet,
             op_kwargs={'table_name': table_name},
+            outlets=[Dataset(f"{dag.dag_id}.{task_id}")],  # Define the dataset for downstream dependencies
         )
  
