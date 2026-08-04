@@ -37,25 +37,44 @@ make up
 
 To get full IDE support (autocomplete, linting, and type checking) when developing Airflow DAGs locally, set up a Python 3.10 virtual environment mapped to the container's dependencies.
 
-### 1. Setup Virtual Environment
+### 1. Setup Local Virtual Environment
 
-Using `uv`:
+Choose one of the following methods to create and activate your virtual environment:
+
+#### Option A: Using `uv` (Recommended - Ultra Fast)
+
+```bash
+# Create virtual environment with Python 3.10
 uv venv .venv --python 3.10
-.venv\Scripts\activate                     # Windows
-# source .venv/bin/activate                # Linux/macOS
 
-.venv\Scripts\python.exe -m ensurepip --upgrade
-python -m pip install --upgrade pip
-python -m pip install "apache-airflow==2.10.0" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.0/constraints-3.10.txt"
-python -m pip install -r .docker/config/requirements.txt
+# Activate virtual environment
+# On Windows:
+.venv\Scripts\activate
+# On Linux/macOS:
+source .venv/bin/activate
 
-Or using standard `venv`:
+# Install dependencies using Airflow constraint
+uv pip install "apache-airflow==2.10.0" --constraint "[https://raw.githubusercontent.com/apache/airflow/constraints-2.10.0/constraints-3.10.txt](https://raw.githubusercontent.com/apache/airflow/constraints-2.10.0/constraints-3.10.txt)"
+uv pip install -r .docker/config/requirements.txt
+```
+
+#### Option B: Using Standard `venv`
+
+```bash
+# Create virtual environment
 python -m venv .venv
-.venv\Scripts\activate                     # Windows
-# source .venv/bin/activate                # Linux/macOS
 
-python -m pip install "apache-airflow==2.10.0" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.0/constraints-3.10.txt"
+# Activate virtual environment
+# On Windows:
+.venv\Scripts\activate
+# On Linux/macOS:
+source .venv/bin/activate
+
+# Upgrade pip & install dependencies using Airflow constraint
+python -m pip install --upgrade pip
+python -m pip install "apache-airflow==2.10.0" --constraint "[https://raw.githubusercontent.com/apache/airflow/constraints-2.10.0/constraints-3.10.txt](https://raw.githubusercontent.com/apache/airflow/constraints-2.10.0/constraints-3.10.txt)"
 python -m pip install -r .docker/config/requirements.txt
+```
 
 ### 2. Configure Editor
 Point your IDE (VS Code / PyCharm) interpreter to `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (Linux/macOS).
