@@ -17,10 +17,18 @@ An end-to-end local Data Lakehouse platform leveraging modern data stack tooling
 ## 🚀 Quickstart
 
 ### 1. Launch Services via Docker Compose
+
 Ensure Docker Desktop is running, then spin up the infrastructure:
 
+```bash
+# Shortcut for `docker compose up` using the Makefile
 make up
-# or: docker compose -f .docker/docker-compose.yaml up -d
+```
+or
+
+```bash
+docker compose -f .docker/docker-compose.yaml up -d
+```
 
 ### 2. Service Access Points
 
@@ -77,6 +85,7 @@ python -m pip install -r .docker/config/requirements.txt
 ```
 
 ### 2. Configure Editor
+
 Point your IDE (VS Code / PyCharm) interpreter to `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (Linux/macOS).
 
 ### 3. Test DAGs Locally via CLI
