@@ -1,0 +1,10 @@
+airflow:
+  owners:
+    technical_owners:
+      - gomespgp
+  retries: 2
+  start_date: "2026-01-01"
+
+dbt:
+  project_dir: "/opt/airflow/dbt"
+  profiles_dir: "/opt/airflow/dbt"

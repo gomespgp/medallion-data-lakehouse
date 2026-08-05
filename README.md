@@ -62,7 +62,7 @@ uv venv .venv --python 3.10
 source .venv/bin/activate
 
 # Install dependencies using Airflow constraint
-uv pip install "apache-airflow==2.10.0" --constraint "[https://raw.githubusercontent.com/apache/airflow/constraints-2.10.0/constraints-3.10.txt](https://raw.githubusercontent.com/apache/airflow/constraints-2.10.0/constraints-3.10.txt)"
+uv pip install "apache-airflow==2.10.0" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.0/constraints-3.10.txt"
 uv pip install -r .docker/config/requirements.txt
 ```
 
@@ -104,14 +104,14 @@ airflow tasks test ecommerce_ingestion_dag ingest_users_to_bronze 2026-08-01
 local-data-lakehouse/
 |-- .docker/
 |   |-- config/
-|   |   `-- requirements.txt          # Single source of truth for Airflow python packages
-|   |-- docker-compose.yaml           # Infrastructure definition
-|   `-- .env                          # Local environment variables
+|   |   `-- requirements.txt                   # Single source of truth for Airflow python packages
+|   |-- docker-compose.yaml                    # Infrastructure definition
+|   `-- .env                                   # Local environment variables
 |-- airflow/
 |   `-- dags/
-|       `-- ecommerce_ingestion/      # Ingestion DAG module
-|           `-- dag.py
-|-- dbt/                              # dbt transformation models and DuckDB configs
-|-- ARCHITECTURE.md                   # Detailed technical design & system flow
+|       `-- ecommerce_db_fetch/                # Ingestion DAG module
+|           `-- _dag_ecommerce_db_fetch.py
+|-- dbt/                                       # dbt transformation models and DuckDB configs
+|-- ARCHITECTURE.md                            # Detailed technical design & system flow
 `-- README.md
 ```

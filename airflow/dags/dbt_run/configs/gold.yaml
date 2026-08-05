@@ -1,0 +1,8 @@
+airflow:
+  id: "dbt_run_gold"
+  dependencies:
+    - dag_id: "dbt_run_silver"
+      task_id: "run_dbt_model"
+
+dbt:
+  model: gold # Star Schema & Business Aggregations

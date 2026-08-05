@@ -6,3 +6,4 @@ s3fs
 pyyaml
 apache-airflow-providers-amazon
 dbt-duckdb~=1.8.0
+pydantic>=2.0.0
