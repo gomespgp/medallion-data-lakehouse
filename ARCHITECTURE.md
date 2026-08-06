@@ -77,37 +77,77 @@ s3://dev-lakehouse-bronze/postgres_ecommerce_db/users/year=2026/month=08/day=01/
 ### 3. Hive-Style Key-Value Partitioning
 Partition folders follow standard Hive key-value formatting (`year=YYYY/month=MM/day=DD`). This key-value structure allows analytical engines (DuckDB, Spark, Trino, Athena) to perform automatic partition pruning when executing SQL queries over S3.
 
+### 4. Processing-Time Partitioning & Execution Variable Injection
+
+To maintain strict idempotency and historical snapshot tracking, storage locations across all three Medallion layers (Bronze, Silver, and Gold) follow a consistent execution-date partition structure:
+
+`s3://[bucket-name]/[domain]/[table_name]/year=YYYY/month=MM/day=DD/[table_name].parquet`
+
+#### Processing Time vs. Event/Business Time
+- Processing / Partition Path (Directory Structure): Represents when the Airflow pipeline executed (`logical_dat`e / `data_interval_end`). Partitioning S3 directories by execution date prevents daily DAG runs from overwriting historical snapshots, isolates incremental backfills, and guarantees pipeline re-runs are completely idempotent.
+- Event / Business Time (created_at, order_date, signup_date): Preserved strictly as internal data columns inside the Parquet payload. SQL transformations aggregate and model business logic using these explicit timestamp/date fields.
+
+#### Orchestration Variable Flow (Airflow ---> dbt ---> DuckDB)
+
+Because Airflow tasks execute in isolated BashOperator containers across process boundaries, dbt-duckdb cannot rely on in-memory table catalog state between Silver and Gold runs. Instead, Airflow formats and passes the execution partition path dynamically into dbt as a CLI variable.
+
+1. Airflow Orchestration
+   - Task Execution: The BashOperator evaluates the Jinja template `{{ data_interval_end.strftime("year=%Y/month=%m/day=%d") }}`.
+   - Payload Injection: Injects the dynamic partition path flag into the dbt CLI command:
+     `--vars '{"partition_path": "year=2026/month=08/day=05"}'`
+
+2. Silver Transformation (stg_orders.sql)
+   - Input: Reads Bronze raw landing location for current execution date.
+   - Output Target: Models dynamically resolve their S3 output path in their config block:
+    ```sql
+    {{ config(
+        materialized='external',
+        format='parquet',
+        location='s3://dev-lakehouse-silver/postgres_ecommerce_db/orders/' ~ var('partition_path') ~ '/stg_orders.parquet'
+    ) }}
+    ```
+
+3. Gold Transformation (dim_users.sql)
+   - Input: Reads Silver current execution partition resolved via dbt source definition (`_sources.yml`):
+    ```yaml
+    config:
+        external_location: "s3://dev-lakehouse-silver/postgres_ecommerce_db/orders/{{ var('partition_path') }}/stg_orders.parquet"
+    ```
+   - Output Target: Materializes final aggregated star-schema dataset to current execution partition:
+     `s3://dev-lakehouse-gold/postgres_ecommerce_db/dim_users/year=2026/month=08/day=05/dim_users.parquet`
+
 ---
 
 ## Medallion Lakehouse Structure
 
 ```mermaid
 graph TD
-    subgraph Bronze ["🥉 BRONZE LAYER (s3://dev-lakehouse-bronze)"]
+    subgraph Bronze ["BRONZE LAYER (s3://dev-lakehouse-bronze)"]
         direction TB
         B1["postgres_ecommerce_db/users/year=YYYY/month=MM/day=DD/users.parquet"]
         B2["postgres_ecommerce_db/orders/year=YYYY/month=MM/day=DD/orders.parquet"]
     end
 
-    subgraph Silver ["🥈 SILVER LAYER (s3://dev-lakehouse-silver)"]
+    subgraph Silver ["SILVER LAYER (s3://dev-lakehouse-silver)"]
         direction TB
-        S1["postgres_ecommerce_db/stg_users.parquet"]
-        S2["postgres_ecommerce_db/stg_orders.parquet"]
+        S1["postgres_ecommerce_db/users/year=YYYY/month=MM/day=DD/stg_users.parquet"]
+        S2["postgres_ecommerce_db/orders/year=YYYY/month=MM/day=DD/stg_orders.parquet"]
     end
 
-    subgraph Gold ["🥇 GOLD LAYER (s3://dev-lakehouse-gold)"]
+    subgraph Gold ["GOLD LAYER (s3://dev-lakehouse-gold)"]
         direction TB
-        G1["dim_customers.parquet"]
-        G2["fact_sales.parquet"]
+        G1["postgres_ecommerce_db/dim_users/year=YYYY/month=MM/day=DD/dim_users.parquet"]
+        G2["postgres_ecommerce_db/fct_daily_sales/year=YYYY/month=MM/day=DD/fct_daily_sales.parquet"]
     end
 
-    subgraph Logs ["📋 OPERATIONAL LOGS (s3://dev-airflow-logs)"]
-        L1["dag_id=ecommerce_ingestion/run_id=.../task_id=.../attempt=1.log"]
+    subgraph Logs ["OPERATIONAL LOGS (s3://dev-airflow-logs)"]
+        L1["dag_id=dbt_run_silver/run_id=.../task_id=.../attempt=1.log"]
     end
 
-    Bronze -->|"dbt Clean & Deduplicate"| Silver
-    Silver -->|"dbt Model & Aggregate"| Gold
+    Bronze -->|"dbt Clean & Deduplicate (partition_path)"| Silver
+    Silver -->|"dbt Model & Aggregate (partition_path)"| Gold
 ```
+
 ---
 
 ## Orchestration & Framework Architecture (utils/dag_factory.py)
