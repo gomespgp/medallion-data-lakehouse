@@ -3,7 +3,7 @@ from pathlib import Path
 from airflow.datasets import Dataset
 from airflow.operators.bash import BashOperator
 
-from utils.dag_factory import create_dynamic_dags
+from common_config.dag_factory import create_dynamic_dags
 
 from dbt_run.src.dag.models import DbtDagConfig
 
@@ -18,16 +18,20 @@ for dag, asset_name, dag_config, airflow_config in create_dynamic_dags(DAG_PATH,
     dbt_params = dag_config.dbt
 
     with dag:
-        # 1. Define task
-        task_id = "run_dbt_model"
-        dbt_run_model_task = BashOperator(
-            task_id=task_id,
-            bash_command=f"dbt run --project-dir {dbt_params.project_dir} --profiles-dir {dbt_params.profiles_dir} --select {dbt_params.model}",
-            outlets=[Dataset(f"{dag.dag_id}.{task_id}")],  # Define the dataset for downstream dependencies
+
+        bash_command_template = (
+            "dbt {dbt_run_command} "
+            f"--project-dir {dbt_params.project_dir} "
+            f"--profiles-dir {dbt_params.profiles_dir} "
+            f"--select {dbt_params.model} "
+            '--vars \'{{"partition_path": "{{{{ data_interval_end.strftime("year=%Y/month=%m/day=%d") }}}}"}}\''
         )
-        
-        # 2. Define test task
-        dbt_test_model_task = BashOperator(
-            task_id="test_dbt_model",
-            bash_command=f"dbt test --project-dir {dbt_params.project_dir} --profiles-dir {dbt_params.profiles_dir} --select {dbt_params.model}",
-    )
+
+        # Run dbt commands for each command specified in the config
+        for dbt_run_command in dbt_params.run_commands:
+            task_id = f"{dbt_run_command}_dbt_model"
+            BashOperator(
+                task_id=task_id,
+                bash_command=bash_command_template.format(dbt_run_command=dbt_run_command),
+                outlets=[Dataset(f"{dag.dag_id}.{task_id}")],
+            )

@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: "Bronze layer Parquet datasets stored in MinIO S3 object storage."
+    tables:
+      - name: orders
+        description: "Raw orders dataset from bronze layer"
+        config:
+          external_location: "s3://dev-lakehouse-bronze/postgres_ecommerce_db/orders/{{ var('partition_path') }}/orders.parquet"
+
+      - name: users
+        description: "Raw users dataset from bronze layer"
+        config:
+          external_location: "s3://dev-lakehouse-bronze/postgres_ecommerce_db/users/{{ var('partition_path') }}/users.parquet"

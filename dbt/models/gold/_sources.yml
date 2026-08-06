@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: silver
+    description: "Silver layer Parquet datasets stored in MinIO S3 object storage."
+    tables:
+      - name: stg_orders
+        description: "Cleaned orders dataset from silver layer"
+        config:
+          external_location: "s3://dev-lakehouse-silver/postgres_ecommerce_db/orders/{{ var('partition_path') }}/stg_orders.parquet"
+
+      - name: stg_users
+        description: "Cleaned users dataset from silver layer"
+        config:
+          external_location: "s3://dev-lakehouse-silver/postgres_ecommerce_db/users/{{ var('partition_path') }}/stg_users.parquet"

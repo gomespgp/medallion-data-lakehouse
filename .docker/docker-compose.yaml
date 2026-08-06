@@ -13,12 +13,13 @@ x-airflow-common: &airflow-common
     - AIRFLOW__CORE__LOAD_EXAMPLES=false
     - AIRFLOW__CORE__LOGGING_LEVEL=INFO
     - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW__WEBSERVER__SECRET_KEY}
+    - AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS=false
     # --- Enable Remote Logging to MinIO (S3) dedicated 'dev-airflow-logs' bucket ---
     - AIRFLOW__LOGGING__REMOTE_LOGGING=True
     - AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER=s3://dev-airflow-logs
     - AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID=minio_s3_logs
     # Register MinIO Connection for S3 Remote Logging
-    - AIRFLOW_CONN_MINIO_S3_LOGS=aws://?endpoint_url=http%3A%2F%2Fminio%3A9000
+    - AIRFLOW_CONN_MINIO_S3_LOGS=aws://?endpoint_url=http%3A%2F%2F${MINIO_ENDPOINT}
     # AWS / MinIO S3 Credentials for Airflow Tasks & DuckDB
     - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
     - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
@@ -46,23 +47,23 @@ services:
   # ==========================================
   # 1. Operational Source Database (Postgres)
   # ==========================================
-  postgres_source:
+  ecommerce_postgres:
     image: postgres:16-alpine
-    container_name: postgres_source
+    container_name: ecommerce_postgres
     restart: always
     env_file:
       - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: ecommerce
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"
     volumes:
       - ./scripts/init_postgres.sql:/docker-entrypoint-initdb.d/init_postgres.sql
       - postgres_source_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ecommerce}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -72,7 +73,7 @@ services:
   # ==========================================
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
-    container_name: minio_lake
+    container_name: minio_data_lake
     restart: always
     command: server /data --console-address ":9001"
     env_file:
@@ -81,8 +82,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -100,7 +101,7 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc alias set myminio http://${MINIO_ENDPOINT} ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
       /usr/bin/mc mb --ignore-existing myminio/dev-lakehouse-bronze;
       /usr/bin/mc mb --ignore-existing myminio/dev-lakehouse-silver;
       /usr/bin/mc mb --ignore-existing myminio/dev-lakehouse-gold;
@@ -117,6 +118,8 @@ services:
     image: postgres:16-alpine
     container_name: airflow_db
     restart: always
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

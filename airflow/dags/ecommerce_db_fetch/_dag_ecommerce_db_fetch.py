@@ -3,7 +3,7 @@ from pathlib import Path
 from airflow.datasets import Dataset
 from airflow.operators.python import PythonOperator
 
-from utils.dag_factory import create_dag
+from common_config.dag_factory import create_dag
 
 from ecommerce_db_fetch.src.dag.models import FetchDagConfig
 from ecommerce_db_fetch.src.dag.functions import extract_table_to_minio_parquet
@@ -27,6 +27,7 @@ with dag:
             op_kwargs=dict(
                 table_name=table_name,
             ),
+            provide_context=True,
             outlets=[Dataset(f"{dag.dag_id}.{task_id}")],  # Define the dataset for downstream dependencies
         )
     
