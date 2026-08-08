@@ -7,9 +7,9 @@ sources:
       - name: orders
         description: "Raw orders dataset from bronze layer"
         config:
-          external_location: "s3://dev-lakehouse-bronze/postgres_ecommerce_db/orders/{{ var('partition_path') }}/orders.parquet"
+          external_location: "s3://{{ var('bronze_bucket') }}/postgres_ecommerce_db/orders/{{ var('partition_path') }}/orders.parquet"
 
       - name: users
         description: "Raw users dataset from bronze layer"
         config:
-          external_location: "s3://dev-lakehouse-bronze/postgres_ecommerce_db/users/{{ var('partition_path') }}/users.parquet"
+          external_location: "s3://{{ var('bronze_bucket') }}/postgres_ecommerce_db/users/{{ var('partition_path') }}/users.parquet"

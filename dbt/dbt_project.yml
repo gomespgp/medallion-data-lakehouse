@@ -21,3 +21,8 @@ models:
       +materialized: external
     gold:
       +materialized: external
+
+vars:
+  bronze_bucket: "dev-lakehouse-bronze"
+  silver_bucket: "dev-lakehouse-silver"
+  gold_bucket: "dev-lakehouse-gold"

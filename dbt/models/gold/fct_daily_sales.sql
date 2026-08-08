@@ -1,7 +1,7 @@
 {{ config(
     materialized='external',
     format='parquet',
-    location='s3://dev-lakehouse-gold/postgres_ecommerce_db/fct_daily_sales/' ~ var('partition_path') ~ '/fct_daily_sales.parquet'
+    location=get_s3_location('gold', 'postgres_ecommerce_db')
 ) }}
 
 with
